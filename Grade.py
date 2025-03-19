@@ -1,4 +1,5 @@
 import sqlite3
+from prettytable import PrettyTable
 
 # Conexão com o banco de dados SQLite
 conn = sqlite3.connect('projeto.db')
@@ -37,11 +38,29 @@ def inserir_disciplina(nome):
 
 # Função para consultar a grade de disciplinas
 def consultar_grade():
-    cursor.execute('SELECT * FROM disciplinas')
+    cursor.execute('''
+        SELECT d.id, d.nome, 
+               COALESCE(n.unidade1, '') AS unidade1, 
+               COALESCE(n.unidade2, '') AS unidade2, 
+               COALESCE(n.unidade3, '') AS unidade3, 
+               COALESCE(n.unidade4, '') AS unidade4, 
+               COALESCE(n.prova, '') AS prova, 
+               COALESCE(n.media_unidades, '') AS media_unidades, 
+               COALESCE(n.resultado_final, '') AS resultado_final
+        FROM disciplinas d
+        LEFT JOIN notas n ON d.id = n.disciplina_id
+    ''')
     disciplinas = cursor.fetchall()
-    print("Grade de Disciplinas:")
+
+    # Criar tabela formatada
+    tabela = PrettyTable()
+    tabela.field_names = ["ID", "Nome", "Unidade 1", "Unidade 2", "Unidade 3", "Unidade 4", "Prova", "Média Unidades", "Resultado Final"]
+
     for disciplina in disciplinas:
-        print(f'ID: {disciplina[0]}, Nome: {disciplina[1]}')
+        tabela.add_row(disciplina)
+
+    print("Grade de Disciplinas:")
+    print(tabela)
 
 # Função para inserir notas de uma disciplina
 def inserir_notas(disciplina_id, unidade1=None, unidade2=None, unidade3=None, unidade4=None, prova=None):
@@ -89,14 +108,42 @@ def inserir_notas(disciplina_id, unidade1=None, unidade2=None, unidade3=None, un
     conn.commit()
     print(f'Notas atualizadas para a disciplina ID {disciplina_id} com sucesso!')
 
-# Menu de opções
+# Função para consultar todas as disciplinas
+def consultar_disciplinas():
+    cursor.execute('SELECT id, nome FROM disciplinas')
+    disciplinas = cursor.fetchall()
+
+    if disciplinas:
+        print("\nDisciplinas cadastradas:")
+        for disciplina in disciplinas:
+            print(f"ID: {disciplina[0]}, Nome: {disciplina[1]}")
+    else:
+        print("\nNenhuma disciplina cadastrada.")
+
+# Função para eliminar uma disciplina
+def eliminar_disciplina(disciplina_id):
+    # Verificar se a disciplina existe
+    cursor.execute('SELECT id FROM disciplinas WHERE id = ?', (disciplina_id,))
+    if cursor.fetchone() is None:
+        print(f"Disciplina com ID {disciplina_id} não encontrada.")
+        return
+
+    # Excluir a disciplina e suas notas associadas
+    cursor.execute('DELETE FROM notas WHERE disciplina_id = ?', (disciplina_id,))
+    cursor.execute('DELETE FROM disciplinas WHERE id = ?', (disciplina_id,))
+    conn.commit()
+    print(f"Disciplina com ID {disciplina_id} eliminada com sucesso!")
+
+# Atualização do menu de opções
 def menu():
     while True:
         print("\nMenu:")
         print("1. Inserir Disciplina")
         print("2. Consultar Grade")
         print("3. Inserir Notas")
-        print("4. Sair")
+        print("4. Consultar Disciplinas")
+        print("5. Eliminar Disciplina")
+        print("6. Sair")
         opcao = input("Escolha uma opção: ")
 
         if opcao == '1':
@@ -121,6 +168,11 @@ def menu():
 
             inserir_notas(disciplina_id, unidade1, unidade2, unidade3, unidade4, prova)
         elif opcao == '4':
+            consultar_disciplinas()
+        elif opcao == '5':
+            disciplina_id = int(input("Digite o ID da disciplina a ser eliminada: "))
+            eliminar_disciplina(disciplina_id)
+        elif opcao == '6':
             print("Saindo...")
             break
         else:
