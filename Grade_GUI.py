@@ -2,9 +2,21 @@ import sqlite3
 import tkinter as tk
 from tkinter import messagebox, ttk
 from tkinter import PhotoImage  # Para carregar imagens
+import os
+import sys
+
+# Obter o caminho base do executável ou script
+if getattr(sys, 'frozen', False):
+    base_path = sys._MEIPASS  # Caminho temporário usado pelo PyInstaller
+else:
+    base_path = os.path.dirname(os.path.abspath(__file__))
+
+# Caminhos para os arquivos
+db_path = os.path.join(base_path, "projeto.db")
+png_path = os.path.join(base_path, "png")
 
 # Conexão com o banco de dados SQLite
-conn = sqlite3.connect('projeto.db')
+conn = sqlite3.connect(db_path)
 cursor = conn.cursor()
 
 # Criação das tabelas
@@ -189,8 +201,16 @@ def consultar_grade():
                COALESCE(n.unidade3, '') AS unidade3, 
                COALESCE(n.unidade4, '') AS unidade4, 
                COALESCE(n.prova, '') AS prova, 
-               COALESCE(n.media_unidades, '') AS media_unidades, 
-               COALESCE(n.resultado_final, '') AS resultado_final
+               CASE 
+                   WHEN n.unidade1 IS NOT NULL AND n.unidade2 IS NOT NULL AND n.unidade3 IS NOT NULL AND n.unidade4 IS NOT NULL THEN 
+                       ROUND((n.unidade1 + n.unidade2 + n.unidade3 + n.unidade4) / 4, 2)
+                   ELSE ''
+               END AS media_unidades, 
+               CASE 
+                   WHEN n.unidade1 IS NOT NULL AND n.unidade2 IS NOT NULL AND n.unidade3 IS NOT NULL AND n.unidade4 IS NOT NULL AND n.prova IS NOT NULL THEN 
+                       ROUND(((n.unidade1 + n.unidade2 + n.unidade3 + n.unidade4) / 4) * 0.4 + n.prova * 0.6, 2)
+                   ELSE ''
+               END AS resultado_final
         FROM disciplinas d
         LEFT JOIN notas n ON d.id = n.disciplina_id
     ''')
@@ -226,35 +246,64 @@ def inserir_notas():
     combo_disciplina = ttk.Combobox(main_frame, values=disciplinas, state="readonly")
     combo_disciplina.pack(pady=5)
 
-    # Função de validação para aceitar apenas números e ponto decimal
-    def validar_entrada(texto):
-        if texto == "" or texto.isdigit() or (texto.count('.') == 1 and texto.replace('.', '').isdigit()):
-            return True
-        return False
-
-    # Registrar a função de validação
-    validar_cmd = main_frame.register(validar_entrada)
-
     # Campos de entrada para as notas
     tk.Label(main_frame, text="Nota Unidade 1:").pack(pady=5)
-    entry_u1 = tk.Entry(main_frame, validate="key", validatecommand=(validar_cmd, "%P"))
+    entry_u1 = tk.Entry(main_frame)
     entry_u1.pack(pady=5)
 
     tk.Label(main_frame, text="Nota Unidade 2:").pack(pady=5)
-    entry_u2 = tk.Entry(main_frame, validate="key", validatecommand=(validar_cmd, "%P"))
+    entry_u2 = tk.Entry(main_frame)
     entry_u2.pack(pady=5)
 
     tk.Label(main_frame, text="Nota Unidade 3:").pack(pady=5)
-    entry_u3 = tk.Entry(main_frame, validate="key", validatecommand=(validar_cmd, "%P"))
+    entry_u3 = tk.Entry(main_frame)
     entry_u3.pack(pady=5)
 
     tk.Label(main_frame, text="Nota Unidade 4:").pack(pady=5)
-    entry_u4 = tk.Entry(main_frame, validate="key", validatecommand=(validar_cmd, "%P"))
+    entry_u4 = tk.Entry(main_frame)
     entry_u4.pack(pady=5)
 
     tk.Label(main_frame, text="Nota Prova:").pack(pady=5)
-    entry_prova = tk.Entry(main_frame, validate="key", validatecommand=(validar_cmd, "%P"))
+    entry_prova = tk.Entry(main_frame)
     entry_prova.pack(pady=5)
+
+    # Função para carregar os valores existentes no banco de dados
+    def carregar_notas(event):
+        disciplina_nome = combo_disciplina.get()
+        cursor.execute('''
+            SELECT unidade1, unidade2, unidade3, unidade4, prova
+            FROM notas
+            INNER JOIN disciplinas ON notas.disciplina_id = disciplinas.id
+            WHERE disciplinas.nome = ?
+        ''', (disciplina_nome,))
+        result = cursor.fetchone()
+
+        # Preencher os campos com os valores existentes ou limpar se não houver valores
+        if result:
+            entry_u1.delete(0, tk.END)
+            entry_u1.insert(0, result[0] if result[0] is not None else "")
+
+            entry_u2.delete(0, tk.END)
+            entry_u2.insert(0, result[1] if result[1] is not None else "")
+
+            entry_u3.delete(0, tk.END)
+            entry_u3.insert(0, result[2] if result[2] is not None else "")
+
+            entry_u4.delete(0, tk.END)
+            entry_u4.insert(0, result[3] if result[3] is not None else "")
+
+            entry_prova.delete(0, tk.END)
+            entry_prova.insert(0, result[4] if result[4] is not None else "")
+        else:
+            # Limpar os campos se não houver notas
+            entry_u1.delete(0, tk.END)
+            entry_u2.delete(0, tk.END)
+            entry_u3.delete(0, tk.END)
+            entry_u4.delete(0, tk.END)
+            entry_prova.delete(0, tk.END)
+
+    # Vincular a seleção do Combobox à função de carregar notas
+    combo_disciplina.bind("<<ComboboxSelected>>", carregar_notas)
 
     # Função para salvar as notas no banco de dados
     def salvar_notas():
@@ -285,7 +334,7 @@ def inserir_notas():
             messagebox.showwarning("Erro", "Insira valores numéricos válidos para as notas.")
             return
 
-        # Calcular média e resultado final
+        # Calcular média e resultado final apenas se todas as unidades forem fornecidas
         media_unidades = None
         resultado_final = None
         if None not in (unidade1, unidade2, unidade3, unidade4):
@@ -296,22 +345,28 @@ def inserir_notas():
         # Inserir ou atualizar as notas no banco de dados
         cursor.execute('SELECT * FROM notas WHERE disciplina_id = ?', (disciplina_id,))
         if cursor.fetchone():
+            # Atualizar os campos, permitindo que valores vazios sejam definidos como NULL
             cursor.execute('''
                 UPDATE notas
-                SET unidade1 = COALESCE(?, unidade1),
-                    unidade2 = COALESCE(?, unidade2),
-                    unidade3 = COALESCE(?, unidade3),
-                    unidade4 = COALESCE(?, unidade4),
-                    prova = COALESCE(?, prova),
-                    media_unidades = COALESCE(?, ?),
-                    resultado_final = COALESCE(?, ?)
+                SET unidade1 = ?,
+                    unidade2 = ?,
+                    unidade3 = ?,
+                    unidade4 = ?,
+                    prova = ?,
+                    media_unidades = ?,
+                    resultado_final = ?
                 WHERE disciplina_id = ?
             ''', (unidade1, unidade2, unidade3, unidade4, prova, media_unidades, resultado_final, disciplina_id))
         else:
-            cursor.execute('''
-                INSERT INTO notas (disciplina_id, unidade1, unidade2, unidade3, unidade4, prova, media_unidades, resultado_final)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (disciplina_id, unidade1, unidade2, unidade3, unidade4, prova, media_unidades, resultado_final))
+            # Inserir apenas se pelo menos um valor for fornecido
+            if any(value is not None for value in [unidade1, unidade2, unidade3, unidade4, prova]):
+                cursor.execute('''
+                    INSERT INTO notas (disciplina_id, unidade1, unidade2, unidade3, unidade4, prova, media_unidades, resultado_final)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (disciplina_id, unidade1, unidade2, unidade3, unidade4, prova, media_unidades, resultado_final))
+            else:
+                messagebox.showwarning("Erro", "Insira pelo menos um valor para atualizar as notas.")
+                return
 
         conn.commit()
         messagebox.showinfo("Sucesso", f"Notas atualizadas para a disciplina '{disciplina_nome}' com sucesso!")
@@ -326,7 +381,19 @@ def executar_consulta_sql():
     # Criar uma nova janela para a consulta SQL
     janela_sql = tk.Toplevel(root)
     janela_sql.title("Executar Consulta SQL")
-    janela_sql.geometry("1000x600")
+    janela_sql.geometry("1000x600")  # Define o tamanho da janela
+
+    # Tornar a janela sempre no topo
+    janela_sql.attributes("-topmost", True)
+
+    # Centralizar a janela na tela
+    largura_janela = 1000
+    altura_janela = 600
+    largura_tela = janela_sql.winfo_screenwidth()
+    altura_tela = janela_sql.winfo_screenheight()
+    pos_x = (largura_tela - largura_janela) // 2
+    pos_y = (altura_tela - altura_janela) // 2
+    janela_sql.geometry(f"{largura_janela}x{altura_janela}+{pos_x}+{pos_y}")
 
     # Adicionar título
     tk.Label(janela_sql, text="Executar Consulta SQL", font=("Arial", 16)).pack(pady=10)
@@ -376,15 +443,7 @@ def executar_consulta_sql():
         for campo in campos:
             nome = campo[1]
             tipo = campo[2]
-
-            # Processar o tipo para incluir o tamanho, se aplicável
-            if "(" in tipo:  # Exemplo: VARCHAR(50)
-                tipo_formatado = tipo
-            else:
-                tipo_formatado = tipo  # Exemplo: INTEGER, REAL, etc.
-
-            # Adicionar o campo formatado à lista
-            listbox_campos.insert(tk.END, f"{nome} - {tipo_formatado}")
+            listbox_campos.insert(tk.END, f"{nome} - {tipo}")
 
     # Vincular o evento de seleção de tabela
     listbox_tabelas.bind("<<ListboxSelect>>", carregar_campos)
@@ -431,70 +490,6 @@ def executar_consulta_sql():
     # Carregar as tabelas ao abrir a janela
     carregar_tabelas()
 
-def explorar_banco_dados():
-    # Criar uma nova janela para explorar o banco de dados
-    janela_explorar = tk.Toplevel(root)
-    janela_explorar.title("Explorar Banco de Dados")
-    janela_explorar.geometry("800x600")
-
-    # Adicionar título
-    tk.Label(janela_explorar, text="Explorar Banco de Dados", font=("Arial", 16)).pack(pady=10)
-
-    # Frame para exibir as tabelas
-    frame_tabelas = tk.Frame(janela_explorar)
-    frame_tabelas.pack(side=tk.LEFT, fill=tk.Y, padx=10, pady=10)
-
-    tk.Label(frame_tabelas, text="Tabelas:", font=("Arial", 12)).pack(pady=5)
-    listbox_tabelas = tk.Listbox(frame_tabelas, height=20, width=30)
-    listbox_tabelas.pack(fill=tk.BOTH, expand=True)
-
-    # Frame para exibir os campos da tabela selecionada
-    frame_campos = tk.Frame(janela_explorar)
-    frame_campos.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=10, pady=10)
-
-    tk.Label(frame_campos, text="Campos:", font=("Arial", 12)).pack(pady=5)
-    listbox_campos = tk.Listbox(frame_campos, height=20, width=50)
-    listbox_campos.pack(fill=tk.BOTH, expand=True)
-
-    # Função para carregar as tabelas do banco de dados
-    def carregar_tabelas():
-        listbox_tabelas.delete(0, tk.END)
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-        tabelas = cursor.fetchall()
-        for tabela in tabelas:
-            listbox_tabelas.insert(tk.END, tabela[0])
-
-    # Função para carregar os campos da tabela selecionada
-    def carregar_campos(event):
-        listbox_campos.delete(0, tk.END)
-        tabela_selecionada = listbox_tabelas.get(listbox_tabelas.curselection())
-        cursor.execute(f"PRAGMA table_info({tabela_selecionada})")
-        campos = cursor.fetchall()
-        for campo in campos:
-            nome = campo[1]
-            tipo = campo[2]
-            if "(" in tipo:
-                tipo_formatado = tipo
-            elif "CHAR" in tipo.upper():
-                tipo_formatado = "C"
-            elif "INT" in tipo.upper():
-                tipo_formatado = "I"
-            else:
-                tipo_formatado = tipo
-            listbox_campos.insert(tk.END, f"{nome} - {tipo_formatado}")
-
-    # Vincular o evento de seleção de tabela
-    listbox_tabelas.bind("<<ListboxSelect>>", carregar_campos)
-
-    # Botão para carregar as tabelas
-    tk.Button(janela_explorar, text="Atualizar Tabelas", command=carregar_tabelas).pack(pady=10)
-
-    # Botão para fechar a janela
-    tk.Button(janela_explorar, text="Fechar", command=janela_explorar.destroy).pack(pady=10)
-
-    # Carregar as tabelas ao abrir a janela
-    carregar_tabelas()
-
 # Configuração da janela principal (MDI Form)
 root = tk.Tk()
 root.title("Gerenciador de Disciplinas - MDI")
@@ -506,11 +501,11 @@ main_frame = tk.Frame(root)
 main_frame.pack(fill=tk.BOTH, expand=True)
 
 # Carregar imagens
-img_inserir = PhotoImage(file="png\inserir.png")
-img_consultar = PhotoImage(file="png\consultar.png")
-img_eliminar = PhotoImage(file="png\eliminar.png")
-img_grade = PhotoImage(file="png\grade.png")
-img_notas = PhotoImage(file="png\\notas.png")
+img_inserir = PhotoImage(file=os.path.join(png_path, "inserir.png"))
+img_consultar = PhotoImage(file=os.path.join(png_path, "consultar.png"))
+img_eliminar = PhotoImage(file=os.path.join(png_path, "eliminar.png"))
+img_grade = PhotoImage(file=os.path.join(png_path, "grade.png"))
+img_notas = PhotoImage(file=os.path.join(png_path, "notas.png"))
 
 # Barra de menus
 menu_bar = tk.Menu(root)
@@ -529,7 +524,7 @@ menu_disciplinas.add_command(label="Inserir Notas", command=inserir_notas, image
 menu_utilitarios = tk.Menu(menu_bar, tearoff=0)
 menu_bar.add_cascade(label="Utilitários", menu=menu_utilitarios)
 menu_utilitarios.add_command(label="Executar Consulta SQL", command=executar_consulta_sql)
-menu_utilitarios.add_command(label="Explorar Banco de Dados", command=explorar_banco_dados)
+
 
 # Botão para sair
 menu_bar.add_command(label="Sair", command=root.quit)
