@@ -20,3 +20,46 @@ Este é um aplicativo GUI desenvolvido em Python para gerenciar disciplinas e no
   - `pyinstaller` (apenas para criar o executável)
 
 ## Estrutura do Projeto
+```
+grade/
+├── main.py          # Arquivo principal que inicia a aplicação GUI
+├── database.py      # Módulo para interações com o banco de dados SQLite
+├── gui.py           # Módulo que define a interface gráfica usando Tkinter
+├── utils.py         # Funções auxiliares para cálculos e validações
+├── assets/          # Diretório para arquivos de mídia (ícones, imagens, etc.)
+└── README.md        # Documentação do projeto
+```
+
+## Como Executar
+
+1. Clone este repositório:
+    ```bash
+    git clone https://github.com/seu-usuario/grade-gui.git
+    cd grade-gui
+    ```
+
+2. Instale as dependências necessárias:
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+3. Execute o aplicativo:
+    ```bash
+    python main.py
+    ```
+
+## Criar Executável
+
+Para criar um executável standalone, utilize o **PyInstaller**:
+```bash
+pyinstaller --onefile --windowed main.py
+```
+O executável será gerado na pasta `dist/`.
+
+## Contribuição
+
+Contribuições são bem-vindas! Sinta-se à vontade para abrir issues ou enviar pull requests.
+
+## Licença
+
+Este projeto está licenciado sob a [MIT License](LICENSE).
